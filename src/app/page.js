@@ -21,6 +21,8 @@ export default function Home() {
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [pin, setPin] = useState(['', '', '', '', '', '']);
 
   // Form states
   const [newCookieName, setNewCookieName] = useState('');
@@ -30,6 +32,51 @@ export default function Home() {
 
   const consoleEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const isVerifyingRef = useRef(false);
+
+  const [alertModal, setAlertModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'alert',
+    onConfirm: null,
+    onCancel: null
+  });
+
+  const showAlert = (message, title = 'Thông báo') => {
+    return new Promise((resolve) => {
+      setAlertModal({
+        isOpen: true,
+        title,
+        message,
+        type: 'alert',
+        onConfirm: () => {
+          setAlertModal(prev => ({ ...prev, isOpen: false }));
+          resolve(true);
+        },
+        onCancel: null
+      });
+    });
+  };
+
+  const showConfirm = (message, title = 'Xác nhận') => {
+    return new Promise((resolve) => {
+      setAlertModal({
+        isOpen: true,
+        title,
+        message,
+        type: 'confirm',
+        onConfirm: () => {
+          setAlertModal(prev => ({ ...prev, isOpen: false }));
+          resolve(true);
+        },
+        onCancel: () => {
+          setAlertModal(prev => ({ ...prev, isOpen: false }));
+          resolve(false);
+        }
+      });
+    });
+  };
 
   // Initialize and load saved cookies from localStorage
   useEffect(() => {
@@ -48,8 +95,10 @@ export default function Home() {
       }
 
       if (loadedList.length > 0) {
-        setCookiesList(loadedList);
-        setSelectedId(loadedList[0].id);
+        // Sort loaded profiles alphabetically/numerically
+        const sorted = [...loadedList].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+        setCookiesList(sorted);
+        setSelectedId(sorted[0].id);
       } else {
         // Fetch copied cookies from backend
         try {
@@ -68,9 +117,8 @@ export default function Home() {
             }).filter(item => item.parsed && item.parsed.NetflixId); // Only keep valid netflix cookies
 
             if (importedList.length > 0) {
-              saveCookiesList(importedList);
-              setCookiesList(importedList);
-              setSelectedId(importedList[0].id);
+              const sorted = saveCookiesList(importedList);
+              setSelectedId(sorted[0].id);
               addLog(`Preloaded ${importedList.length} cookie profiles successfully.`, "success");
             } else {
               addLog("No valid cookies found in preloaded files.", "warning");
@@ -88,10 +136,28 @@ export default function Home() {
     initCookies();
   }, []);
 
-  // Save cookies to localStorage when the list changes
+  // Save cookies to localStorage when the list changes (and sort them numerically/alphabetically by name)
   const saveCookiesList = (newList) => {
-    setCookiesList(newList);
-    localStorage.setItem('netflix_cookies_profiles', JSON.stringify(newList));
+    const sorted = [...newList].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    setCookiesList(sorted);
+    localStorage.setItem('netflix_cookies_profiles', JSON.stringify(sorted));
+    
+    // Sync to backend file system asynchronously
+    fetch('/api/sync-cookies', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ cookies: sorted }),
+    }).then(res => {
+      if (!res.ok) {
+        console.error("Failed to sync cookies to backend folder");
+      }
+    }).catch(err => {
+      console.error("Error syncing cookies:", err);
+    });
+
+    return sorted;
   };
 
   // Scroll to bottom of log console whenever logs change
@@ -130,62 +196,97 @@ export default function Home() {
     const lines = text.split(/\r?\n/);
 
     // 1. Check for Netscape Cookie Format
+    let isNetscape = false;
     for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
+      if (!trimmed) continue;
+      if (trimmed.startsWith('#')) {
+        isNetscape = true;
+        continue;
+      }
       const parts = trimmed.split('\t');
       if (parts.length >= 7) {
         cookieDict[parts[5]] = decodeCookieValue(parts[6]);
+        isNetscape = true;
       }
+    }
+
+    if (isNetscape && Object.keys(cookieDict).length > 0) {
+      return cookieDict;
     }
 
     // 2. Check for JSON Format
     try {
       const data = JSON.parse(text);
-      const keys = ["NetflixId", "SecureNetflixId", "nfvdid", "OptanonConsent"];
       
+      const processCookie = (cookie) => {
+        const name = cookie.name || cookie.key || cookie.Name || cookie.Key;
+        const value = cookie.value || cookie.Value;
+        if (name && typeof value === 'string') {
+          cookieDict[name] = decodeCookieValue(value);
+        }
+      };
+
       if (Array.isArray(data)) {
         for (const cookie of data) {
-          const name = cookie.name || cookie.key;
-          const value = cookie.value;
-          if (keys.includes(name) && typeof value === 'string') {
-            cookieDict[name] = decodeCookieValue(value);
-          }
+          processCookie(cookie);
         }
       } else if (typeof data === 'object' && data !== null) {
-        if (keys.some(key => key in data)) {
-          for (const key of keys) {
-            const value = data[key];
-            if (typeof value === 'string') {
-              cookieDict[key] = decodeCookieValue(value);
-            }
-          }
-        } else if (Array.isArray(data.cookies)) {
-          for (const cookie of data.cookies) {
-            const name = cookie.name || cookie.key;
-            const value = cookie.value;
-            if (keys.includes(name) && typeof value === 'string') {
-              cookieDict[name] = decodeCookieValue(value);
-            }
+        // Direct key-value JSON
+        for (const [key, val] of Object.entries(data)) {
+          if (typeof val === 'string' && key !== 'cookies') {
+            cookieDict[key] = decodeCookieValue(val);
           }
         }
+        // Nested cookies array
+        if (Array.isArray(data.cookies)) {
+          for (const cookie of data.cookies) {
+            processCookie(cookie);
+          }
+        }
+      }
+      if (Object.keys(cookieDict).length > 0) {
+        return cookieDict;
       }
     } catch (e) {
       // Ignore JSON parsing errors
     }
 
-    // 3. Fallback to Regex for Raw Cookie String
-    const keys = ["NetflixId", "SecureNetflixId", "nfvdid", "OptanonConsent"];
-    for (const key of keys) {
-      if (cookieDict[key]) continue;
-      const regex = new RegExp(`(?:^|;|,|\\s)${key}=([^;,\\s]+)`);
-      const match = text.match(regex);
-      if (match) {
-        cookieDict[key] = decodeCookieValue(match[1]);
+    // 3. Fallback to parsing semicolon-separated cookie headers
+    const pairs = text.split(';');
+    for (const pair of pairs) {
+      const trimmedPair = pair.trim();
+      if (!trimmedPair) continue;
+      const parts = trimmedPair.split('=');
+      if (parts.length >= 2) {
+        const key = parts[0].trim();
+        const value = parts.slice(1).join('=').trim();
+        if (key && !key.startsWith('#')) {
+          cookieDict[key] = decodeCookieValue(value);
+        }
       }
     }
 
     return cookieDict;
+  };
+
+  // Convert parsed cookies back into standard Netscape format
+  const generateNetscapeCookieString = (cookieDict) => {
+    let output = `# Netscape HTTP Cookie File\n# https://curl.haxx.se/rfc/cookie_spec.html\n# This is a generated file! Do not edit.\n\n`;
+    
+    const defaultExpiry = 1791646041; 
+    
+    for (const [name, value] of Object.entries(cookieDict)) {
+      if (!name || !value) continue;
+      
+      const domain = name === 'OTSessionTracking' ? 'www.netflix.com' : '.netflix.com';
+      const domainOnly = name === 'OTSessionTracking' ? 'FALSE' : 'TRUE';
+      const path = '/';
+      const isSecure = (name === 'NetflixId' || name === 'SecureNetflixId' || name === 'gsid' || name === 'dsca') ? 'TRUE' : 'FALSE';
+      
+      output += `${domain}\t${domainOnly}\t${path}\t${isSecure}\t${defaultExpiry}\t${name}\t${value}\n`;
+    }
+    return output.trim() + '\n';
   };
 
   // Helper to format timestamps
@@ -209,29 +310,31 @@ export default function Home() {
     }
   };
 
-  const handleAddCookie = () => {
+  const handleAddCookie = async () => {
     const name = newCookieName.trim();
     const raw = newCookieRaw.trim();
 
     if (!name) {
-      alert("Please enter a profile name.");
+      await showAlert("Vui lòng nhập tên cấu hình cookie.", "Thiếu thông tin");
       return;
     }
     if (!raw) {
-      alert("Please paste the cookie content.");
+      await showAlert("Vui lòng dán nội dung cookie vào ô nhập.", "Thiếu thông tin");
       return;
     }
 
     const parsed = extractCookieDict(raw);
     if (!parsed || !parsed.NetflixId) {
-      alert("Failed to parse cookies. The parsed data does not contain the required 'NetflixId' cookie value. Check your input format (JSON, Netscape, or Raw string).");
+      await showAlert("Không thể phân tích cookie. Nội dung đã dán không chứa giá trị cookie 'NetflixId' bắt buộc. Vui lòng kiểm tra lại định dạng (JSON, Netscape, hoặc chuỗi Raw).", "Lỗi phân tích");
       return;
     }
+
+    const formattedRaw = generateNetscapeCookieString(parsed);
 
     const newProfile = {
       id: Date.now().toString(),
       name,
-      raw,
+      raw: formattedRaw,
       parsed
     };
 
@@ -247,28 +350,30 @@ export default function Home() {
     setIsAddModalOpen(false);
   };
 
-  const handleEditCookie = () => {
+  const handleEditCookie = async () => {
     const name = editCookieName.trim();
     const raw = editCookieRaw.trim();
 
     if (!name) {
-      alert("Please enter a profile name.");
+      await showAlert("Vui lòng nhập tên cấu hình cookie.", "Thiếu thông tin");
       return;
     }
     if (!raw) {
-      alert("Please paste the cookie content.");
+      await showAlert("Vui lòng dán nội dung cookie vào ô nhập.", "Thiếu thông tin");
       return;
     }
 
     const parsed = extractCookieDict(raw);
     if (!parsed || !parsed.NetflixId) {
-      alert("Failed to parse cookies. The parsed data does not contain the required 'NetflixId' cookie value.");
+      await showAlert("Không thể phân tích cookie. Dữ liệu đã phân tích không chứa giá trị cookie 'NetflixId' bắt buộc.", "Lỗi phân tích");
       return;
     }
 
+    const formattedRaw = generateNetscapeCookieString(parsed);
+
     const updated = cookiesList.map((item) => {
       if (item.id === selectedId) {
-        return { ...item, name, raw, parsed };
+        return { ...item, name, raw: formattedRaw, parsed };
       }
       return item;
     });
@@ -278,11 +383,12 @@ export default function Home() {
     setIsEditModalOpen(false);
   };
 
-  const handleDeleteCookie = () => {
+  const handleDeleteCookie = async () => {
     const profile = cookiesList.find(c => c.id === selectedId);
     if (!profile) return;
     
-    if (confirm(`Are you sure you want to delete profile "${profile.name}"?`)) {
+    const confirmed = await showConfirm(`Bạn có chắc chắn muốn xóa cấu hình "${profile.name}" không?`, "Xác nhận xóa");
+    if (confirmed) {
       const updated = cookiesList.filter(c => c.id !== selectedId);
       saveCookiesList(updated);
       
@@ -296,13 +402,126 @@ export default function Home() {
     }
   };
 
-  // Open Edit Modal with current profile values
+  // Open PIN Modal first to verify permission
   const openEditModal = () => {
     const current = cookiesList.find(c => c.id === selectedId);
     if (current) {
-      setEditCookieName(current.name);
-      setEditCookieRaw(current.raw);
-      setIsEditModalOpen(true);
+      isVerifyingRef.current = false;
+      setPin(['', '', '', '', '', '']); // Reset PIN
+      setIsPinModalOpen(true);
+      // Auto focus first input field in next tick
+      setTimeout(() => {
+        const firstInput = document.getElementById('pin-input-0');
+        if (firstInput) firstInput.focus();
+      }, 50);
+    }
+  };
+
+  const verifyPin = async (pinArray) => {
+    if (isVerifyingRef.current) return;
+
+    const pinString = pinArray.join('');
+    if (pinString.length < 6) return;
+
+    isVerifyingRef.current = true;
+
+    if (pinString === '100604') {
+      setIsPinModalOpen(false);
+      const current = cookiesList.find(c => c.id === selectedId);
+      if (current) {
+        setEditCookieName(current.name);
+        setEditCookieRaw(current.raw);
+        setIsEditModalOpen(true);
+      }
+      isVerifyingRef.current = false;
+    } else {
+      await showAlert("Sai mã PIN! Bạn không có quyền chỉnh sửa tài khoản.", "Lỗi xác thực");
+      setPin(['', '', '', '', '', '']);
+      isVerifyingRef.current = false;
+      const firstInput = document.getElementById('pin-input-0');
+      if (firstInput) firstInput.focus();
+    }
+  };
+
+  const handlePinChange = (value, index) => {
+    // Keep only numeric characters
+    const digits = value.replace(/\D/g, '');
+    
+    const newPin = [...pin];
+    if (digits.length === 0) {
+      newPin[index] = '';
+      setPin(newPin);
+      return;
+    }
+
+    // Take the last digit if there are multiple (due to IME or fast typing)
+    const lastDigit = digits.slice(-1);
+    newPin[index] = lastDigit;
+    setPin(newPin);
+
+    // Auto-focus next input
+    if (index < 5) {
+      const nextInput = document.getElementById(`pin-input-${index + 1}`);
+      if (nextInput) nextInput.focus();
+    }
+
+    // Auto-verify if this completes the 6 digits
+    const pinString = newPin.join('');
+    if (pinString.length === 6) {
+      setTimeout(() => {
+        verifyPin(newPin);
+      }, 50);
+    }
+  };
+
+  const handlePinKeyDown = (e, index) => {
+    if (e.key === 'Backspace') {
+      const newPin = [...pin];
+      
+      if (!pin[index] && index > 0) {
+        newPin[index - 1] = '';
+        setPin(newPin);
+        const prevInput = document.getElementById(`pin-input-${index - 1}`);
+        if (prevInput) {
+          prevInput.focus();
+        }
+      } else {
+        newPin[index] = '';
+        setPin(newPin);
+      }
+    } else if (e.key === 'Enter') {
+      if (pin.join('').length === 6) {
+        verifyPin(pin);
+      }
+    }
+  };
+
+  const handlePinPaste = (e, index) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '');
+    if (!pastedData) return;
+
+    const newPin = [...pin];
+    
+    // Fill the pin boxes starting from the pasted index
+    for (let i = 0; i < pastedData.length; i++) {
+      if (index + i < 6) {
+        newPin[index + i] = pastedData[i];
+      }
+    }
+    setPin(newPin);
+
+    // Focus the appropriate input after paste
+    const nextFocusIndex = Math.min(index + pastedData.length, 5);
+    const nextInput = document.getElementById(`pin-input-${nextFocusIndex}`);
+    if (nextInput) nextInput.focus();
+
+    // Auto-verify if this completes the 6 digits
+    const pinString = newPin.join('');
+    if (pinString.length === 6) {
+      setTimeout(() => {
+        verifyPin(newPin);
+      }, 50);
     }
   };
 
@@ -312,23 +531,25 @@ export default function Home() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const text = event.target.result;
       const parsed = extractCookieDict(text);
       
       if (!parsed || !parsed.NetflixId) {
         addLog(`Failed to import cookie from file "${file.name}": NetflixId not found.`, "error");
-        alert(`Failed to import cookie from file "${file.name}". Ensure it contains a valid NetflixId cookie.`);
+        await showAlert(`Không thể nhập cookie từ file "${file.name}". Hãy đảm bảo file chứa cookie NetflixId hợp lệ.`, "Lỗi nhập file");
         return;
       }
 
       // Generate a default name from the file name without extension
       const defaultName = file.name.replace(/\.[^/.]+$/, "");
       
+      const formattedRaw = generateNetscapeCookieString(parsed);
+
       const newProfile = {
         id: Date.now().toString(),
         name: defaultName,
-        raw: text,
+        raw: formattedRaw,
         parsed
       };
 
@@ -617,6 +838,99 @@ export default function Home() {
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setIsEditModalOpen(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={handleEditCookie}>Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PIN Verification Modal */}
+      {isPinModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '380px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Xác thực quyền</h3>
+              <button className="modal-close" onClick={() => setIsPinModalOpen(false)}>&times;</button>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center' }}>
+              <p style={{ color: 'var(--text-sub)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                Vui lòng nhập mã PIN gồm 6 chữ số để chỉnh sửa:
+              </p>
+              
+              <div className="pin-inputs-container">
+                {pin.map((digit, idx) => (
+                  <input
+                    key={idx}
+                    id={`pin-input-${idx}`}
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={digit}
+                    className="pin-input"
+                    onChange={(e) => handlePinChange(e.target.value, idx)}
+                    onKeyDown={(e) => handlePinKeyDown(e, idx)}
+                    onPaste={(e) => handlePinPaste(e, idx)}
+                    autoComplete="off"
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setIsPinModalOpen(false)}>Hủy</button>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => verifyPin(pin)}
+                disabled={pin.join('').length < 6}
+              >
+                Xác nhận
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Alert/Confirm Modal */}
+      {alertModal.isOpen && (
+        <div className="modal-overlay" style={{ zIndex: 2000 }}>
+          <div className="modal-content" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ color: alertModal.type === 'confirm' ? 'var(--accent)' : 'var(--text-main)' }}>
+                {alertModal.title}
+              </h3>
+              <button 
+                className="modal-close" 
+                onClick={() => {
+                  if (alertModal.onCancel) alertModal.onCancel();
+                  else alertModal.onConfirm();
+                }}
+              >
+                &times;
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ color: 'var(--text-sub)', fontSize: '0.95rem', lineHeight: '1.5' }}>
+                {alertModal.message}
+              </p>
+            </div>
+            <div className="modal-footer">
+              {alertModal.type === 'confirm' && (
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => {
+                    if (alertModal.onCancel) alertModal.onCancel();
+                  }}
+                >
+                  Hủy
+                </button>
+              )}
+              <button 
+                className="btn btn-primary" 
+                onClick={() => {
+                  if (alertModal.onConfirm) alertModal.onConfirm();
+                }}
+                style={{ minWidth: '80px' }}
+              >
+                {alertModal.type === 'confirm' ? 'Đồng ý' : 'OK'}
+              </button>
             </div>
           </div>
         </div>
