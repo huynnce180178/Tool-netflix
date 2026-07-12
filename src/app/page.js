@@ -86,14 +86,6 @@ export default function Home() {
     };
 
     initCookies();
-
-    // Add initial log greeting
-    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
-    setLogs([
-      { time, message: "Welcome to Netflix Cookie Manager.", type: "info" },
-      { time, message: `Original script credits: ${WATERMARK_LINKS.github}`, type: "success" },
-      { time, message: "Ready. Start managing cookies.", type: "info" }
-    ]);
   }, []);
 
   // Save cookies to localStorage when the list changes
