@@ -199,6 +199,33 @@ export default function Home() {
     return value;
   };
 
+  // Extract the core account token (ct) from NetflixId cookie value to identify unique accounts
+  const extractNetflixAccountId = (netflixId) => {
+    if (!netflixId) return '';
+    // Decode first in case it's URL-encoded
+    const decoded = netflixId.includes('%') ? decodeURIComponent(netflixId) : netflixId;
+    
+    // Parse as query string parameters
+    const parts = decoded.split('&');
+    for (const part of parts) {
+      const [key, val] = part.split('=');
+      if (key === 'ct' && val) {
+        return val.trim();
+      }
+    }
+    
+    // Fallback to the decoded value itself
+    return decoded.trim();
+  };
+
+  const cleanKey = (key) => {
+    let cleaned = key.trim();
+    if (cleaned.toLowerCase().startsWith('cookie:')) {
+      cleaned = cleaned.substring(7).trim();
+    }
+    return cleaned;
+  };
+
   // Parse Netscape, Raw, and JSON cookie strings
   const extractCookieDict = (text) => {
     const cookieDict = {};
@@ -213,9 +240,16 @@ export default function Home() {
         isNetscape = true;
         continue;
       }
-      const parts = trimmed.split('\t');
+      let parts = trimmed.split('\t');
+      if (parts.length < 7) {
+        parts = trimmed.split(/\s+/);
+      }
       if (parts.length >= 7) {
-        cookieDict[parts[5]] = decodeCookieValue(parts[6]);
+        const name = cleanKey(parts[5]);
+        const value = parts.slice(6).join(' ');
+        const normalizedName = name.toLowerCase() === 'netflixid' ? 'NetflixId' : 
+                               name.toLowerCase() === 'securenetflixid' ? 'SecureNetflixId' : name;
+        cookieDict[normalizedName] = decodeCookieValue(value);
         isNetscape = true;
       }
     }
@@ -232,7 +266,10 @@ export default function Home() {
         const name = cookie.name || cookie.key || cookie.Name || cookie.Key;
         const value = cookie.value || cookie.Value;
         if (name && typeof value === 'string') {
-          cookieDict[name] = decodeCookieValue(value);
+          const cleanedName = cleanKey(name);
+          const normalizedName = cleanedName.toLowerCase() === 'netflixid' ? 'NetflixId' : 
+                                 cleanedName.toLowerCase() === 'securenetflixid' ? 'SecureNetflixId' : cleanedName;
+          cookieDict[normalizedName] = decodeCookieValue(value);
         }
       };
 
@@ -244,7 +281,10 @@ export default function Home() {
         // Direct key-value JSON
         for (const [key, val] of Object.entries(data)) {
           if (typeof val === 'string' && key !== 'cookies') {
-            cookieDict[key] = decodeCookieValue(val);
+            const cleanedKey = cleanKey(key);
+            const normalizedKey = cleanedKey.toLowerCase() === 'netflixid' ? 'NetflixId' : 
+                                  cleanedKey.toLowerCase() === 'securenetflixid' ? 'SecureNetflixId' : cleanedKey;
+            cookieDict[normalizedKey] = decodeCookieValue(val);
           }
         }
         // Nested cookies array
@@ -268,10 +308,12 @@ export default function Home() {
       if (!trimmedPair) continue;
       const parts = trimmedPair.split('=');
       if (parts.length >= 2) {
-        const key = parts[0].trim();
+        const key = cleanKey(parts[0]);
         const value = parts.slice(1).join('=').trim();
         if (key && !key.startsWith('#')) {
-          cookieDict[key] = decodeCookieValue(value);
+          const normalizedKey = key.toLowerCase() === 'netflixid' ? 'NetflixId' : 
+                                key.toLowerCase() === 'securenetflixid' ? 'SecureNetflixId' : key;
+          cookieDict[normalizedKey] = decodeCookieValue(value);
         }
       }
     }
@@ -338,20 +380,40 @@ export default function Home() {
       return;
     }
 
+    const newAccountId = extractNetflixAccountId(parsed.NetflixId);
+    const existingIndex = cookiesList.findIndex(c => c.parsed?.NetflixId && extractNetflixAccountId(c.parsed.NetflixId) === newAccountId);
+
     const formattedRaw = generateNetscapeCookieString(parsed);
 
-    const newProfile = {
-      id: Date.now().toString(),
-      name,
-      raw: formattedRaw,
-      parsed
-    };
+    if (existingIndex !== -1) {
+      const existingProfile = cookiesList[existingIndex];
+      const overwrite = await showConfirm(`Tài khoản này đã tồn tại với tên cấu hình "${existingProfile.name}". Bạn có muốn cập nhật (ghi đè) cấu hình này không?`, "Phát hiện trùng lặp");
+      if (!overwrite) {
+        return;
+      }
 
-    const updated = [...cookiesList, newProfile];
-    saveCookiesList(updated);
-    setSelectedId(newProfile.id);
-    
-    addLog(`Created cookie profile: ${name} (parsed successfully)`, "success");
+      const updated = cookiesList.map((item, idx) => {
+        if (idx === existingIndex) {
+          return { ...item, name, raw: formattedRaw, parsed };
+        }
+        return item;
+      });
+      saveCookiesList(updated);
+      setSelectedId(existingProfile.id);
+      addLog(`Updated existing cookie profile: ${name} (matched by account ID)`, "success");
+    } else {
+      const newProfile = {
+        id: Date.now().toString(),
+        name,
+        raw: formattedRaw,
+        parsed
+      };
+
+      const updated = [...cookiesList, newProfile];
+      saveCookiesList(updated);
+      setSelectedId(newProfile.id);
+      addLog(`Created cookie profile: ${name} (parsed successfully)`, "success");
+    }
 
     // Clear form and close modal
     setNewCookieName('');
@@ -375,6 +437,15 @@ export default function Home() {
     const parsed = extractCookieDict(raw);
     if (!parsed || !parsed.NetflixId) {
       await showAlert("Không thể phân tích cookie. Dữ liệu đã phân tích không chứa giá trị cookie 'NetflixId' bắt buộc.", "Lỗi phân tích");
+      return;
+    }
+
+    const newAccountId = extractNetflixAccountId(parsed.NetflixId);
+    const existingIndex = cookiesList.findIndex(c => c.id !== editSelectedId && c.parsed?.NetflixId && extractNetflixAccountId(c.parsed.NetflixId) === newAccountId);
+
+    if (existingIndex !== -1) {
+      const existingProfile = cookiesList[existingIndex];
+      await showAlert(`Không thể cập nhật! Tài khoản này đã tồn tại trong cấu hình "${existingProfile.name}".`, "Trùng lặp cấu hình");
       return;
     }
 
@@ -458,11 +529,12 @@ export default function Home() {
 
           const itemNetflixId = item.parsed?.NetflixId;
           if (!itemNetflixId) continue;
+          const itemAccountId = extractNetflixAccountId(itemNetflixId);
 
-          const isDuplicate = updatedList.some(c => c.parsed?.NetflixId === itemNetflixId);
+          const isDuplicate = updatedList.some(c => c.parsed?.NetflixId && extractNetflixAccountId(c.parsed.NetflixId) === itemAccountId);
           if (isDuplicate) {
             duplicateCount++;
-            const index = updatedList.findIndex(c => c.parsed?.NetflixId === itemNetflixId);
+            const index = updatedList.findIndex(c => c.parsed?.NetflixId && extractNetflixAccountId(c.parsed.NetflixId) === itemAccountId);
             updatedList[index] = {
               ...item,
               id: updatedList[index].id
@@ -578,8 +650,8 @@ export default function Home() {
       return;
     }
 
-    const netflixId = parsed.NetflixId;
-    const match = cookiesList.find(c => c.parsed && c.parsed.NetflixId === netflixId);
+    const accountId = extractNetflixAccountId(parsed.NetflixId);
+    const match = cookiesList.find(c => c.parsed?.NetflixId && extractNetflixAccountId(c.parsed.NetflixId) === accountId);
 
     if (match) {
       await showAlert(`Phát hiện TRÙNG LẶP! Cookie dán vào trùng với cấu hình: "${match.name}".`, "Kết quả kiểm tra");
@@ -602,26 +674,27 @@ export default function Home() {
     for (const profile of cookiesList) {
       const netflixId = profile.parsed?.NetflixId;
       if (!netflixId) continue;
-      if (!idGroups[netflixId]) {
-        idGroups[netflixId] = [];
+      const accountId = extractNetflixAccountId(netflixId);
+      if (!idGroups[accountId]) {
+        idGroups[accountId] = [];
       }
-      idGroups[netflixId].push(profile.name);
+      idGroups[accountId].push(profile.name);
     }
 
     const dupDetails = [];
-    for (const [netflixId, names] of Object.entries(idGroups)) {
+    for (const [accountId, names] of Object.entries(idGroups)) {
       if (names.length > 1) {
         hasDuplicate = true;
-        dupDetails.push(`- Trùng cookie NetflixId (${netflixId.substring(0, 15)}...): ${names.join(', ')}`);
+        dupDetails.push(`- Trùng tài khoản (${accountId.substring(0, 15)}...): ${names.join(', ')}`);
       }
     }
 
     if (hasDuplicate) {
-      const message = `Phát hiện các cấu hình bị trùng lặp cookie sau:\n\n${dupDetails.join('\n')}`;
+      const message = `Phát hiện các cấu hình bị trùng lặp tài khoản sau:\n\n${dupDetails.join('\n')}`;
       await showAlert(message, "Phát hiện trùng lặp");
       addLog("Kiểm tra tất cả cookie: Phát hiện trùng lặp!", "warning");
     } else {
-      await showAlert("Tất cả các cấu hình cookie đã lưu đều duy nhất (Không có trùng lặp).", "Kết quả kiểm tra");
+      await showAlert("Tất cả các cấu hình cookie đã lưu đều duy nhất (Không có trùng lặp tài khoản).", "Kết quả kiểm tra");
       addLog("Kiểm tra tất cả cookie: Không có trùng lặp", "success");
     }
   };
@@ -788,23 +861,42 @@ export default function Home() {
         return;
       }
 
-      // Generate a default name from the file name without extension
-      const defaultName = file.name.replace(/\.[^/.]+$/, "");
-      
+      const newAccountId = extractNetflixAccountId(parsed.NetflixId);
+      const existingIndex = cookiesList.findIndex(c => c.parsed?.NetflixId && extractNetflixAccountId(c.parsed.NetflixId) === newAccountId);
+
       const formattedRaw = generateNetscapeCookieString(parsed);
 
-      const newProfile = {
-        id: Date.now().toString(),
-        name: defaultName,
-        raw: formattedRaw,
-        parsed
-      };
+      if (existingIndex !== -1) {
+        const existingProfile = cookiesList[existingIndex];
+        const overwrite = await showConfirm(`Tài khoản trong file "${file.name}" đã tồn tại với tên cấu hình "${existingProfile.name}". Bạn có muốn cập nhật (ghi đè) cấu hình này không?`, "Phát hiện trùng lặp");
+        if (!overwrite) {
+          return;
+        }
 
-      const updated = [...cookiesList, newProfile];
-      saveCookiesList(updated);
-      setSelectedId(newProfile.id);
-      
-      addLog(`Successfully imported cookie from file "${file.name}" as profile: ${defaultName}`, "success");
+        const updated = cookiesList.map((item, idx) => {
+          if (idx === existingIndex) {
+            return { ...item, raw: formattedRaw, parsed };
+          }
+          return item;
+        });
+        saveCookiesList(updated);
+        setSelectedId(existingProfile.id);
+        addLog(`Updated existing cookie profile "${existingProfile.name}" from file "${file.name}"`, "success");
+      } else {
+        // Generate a default name from the file name without extension
+        const defaultName = file.name.replace(/\.[^/.]+$/, "");
+        const newProfile = {
+          id: Date.now().toString(),
+          name: defaultName,
+          raw: formattedRaw,
+          parsed
+        };
+
+        const updated = [...cookiesList, newProfile];
+        saveCookiesList(updated);
+        setSelectedId(newProfile.id);
+        addLog(`Successfully imported cookie from file "${file.name}" as profile: ${defaultName}`, "success");
+      }
     };
 
     reader.readAsText(file);
