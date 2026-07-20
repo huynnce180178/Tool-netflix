@@ -2,10 +2,12 @@
   "netflix-sans-normal-3-loaded": "true",
   "netflix-sans-bold-3-loaded": "true",
   "pas": "{\"supplementals\":{\"muted\":true}}",
-  "gsid": "4e0039b0-e127-449d-bd47-4d507e3c4626",
+  "dsca": "true",
+  "gsid": "07a7ec79-70d7-414e-a166-a063f21bdcaf",
   "OTSessionTracking": "87b6a5c0-0104-4e96-a291-092c11350111",
-  "nfvdid": "BQFmAAEBEN0D7WxjlXe72H3jm7WE4llgWpX8JOfcf_ZD688gNin31oSYnGtKGAP_jPCs-IQDcQRLRlxv_CBf9-bG6PKvHUTVIz5njpDHyD1yn1_w0Wz6gH7bn3mM7-8TwtslJAQKWSsF-GpzSmc4ctQO0vc7ct_6",
-  "SecureNetflixId": "v=3&mac=AQEAEQABABQjk24slU7GMoeuWP6bewoVrJoCYei7jio.&dt=1783870048623",
-  "NetflixId": "v=3&ct=BgjHlOvcAxKNAz7iSjk_cua0sGnaE7yvgyTHKo-vCFuUbCqNXEb6GV6t0qKtvG-O4wuBr-5jAYTtGKg0j0kUbTEibN2RxKCMizfMCwuJA3kWCNPZd2Cql3rGisuu8col97U0hqR-ngQevXhKvbjBOOVaviphWdT5M3zbLvEgYIc4AsrL9Qczd0bc8UNFEYKtHjJxmLp4BcJpIhMDLeGkYRaNJ2oNPIU5EaKTnXnWJX4TjImscgKfd9DddON23r2QgKkheCzdPHC2R1TuU_KFEucz7uPo0oHYs6MsD5LQThGA_HcmdqBzcTCIL_9f26GyFYMxK03fV9fw_wfNlTl5OB2vvBl5KUeB9OtL50Tdx8PECLqQjkUKcLFQj1DC2u8Anrd9N57YfdvpySpBbPoZuGtEaNoeKM_xHnUqwQo5MOaH7tptCBIWPquf-jnTid-uJIhT0dVH7ABkLn_iDsxmKxF7LJsIktZQKU6MFIyGlnaoNGOEWaDlWWHmW5IZOxBfTwq1dOooGkvLtI5CY5zKrh_EFQ_6xTwYBiIOCgyH1IhwTaRFDNxozmg.&pg=ZUTNYLDX2JEITKV3TDRWHP6WGA&ch=AQEAEAABABSW1W2tz1-2hJrMP-JPN3hf7f4VjPmWiBQ.",
-  "OptanonConsent": "isGpcEnabled=0&datestamp=Sun+Jul+12+2026+22:27:21+GMT+0700+(Giờ+Đông+Dương)&version=202604.2.0&browserGpcFlag=0&isDntEnabled=0&isIABGlobal=false&hosts=&consentId=b4ce0959-5cbf-428e-9a8a-bed8525afde2&interactionCount=1&isAnonUser=1&prevHadToken=0&landingPath=NotLandingPage&groups=C0001:1,C0002:1,C0003:1,C0004:1&crTime=1783151131882&AwaitingReconsent=false"
+  "flwssn": "9bde9bb5-7421-4db0-b982-30756d8b11bd",
+  "nfvdid": "BQFmAAEBEFl70xanHRxJXMpmUUMqh09gTBdolwh1-exjlsnU4BX9vN3PZ5RLbXMefL1YffRlZO3FhaMHDQh03cfUEXGF_XiwwpFWJop1WmJa3E2dTJLrnkn0x5yv0gjrgvts3jFXNUTBJcxYLr2AU_Ts6CKt8SVX",
+  "SecureNetflixId": "v=3&mac=AQEAEQABABR4I8FlWWrPNHHXRi60294StFpUy8EEjDA.&dt=1784083124469",
+  "NetflixId": "v=3&ct=BgjHlOvcAxKPA6yZaeitPRY2EeVvLhiJA6Vgv_nXuZO5ltLpvwRv_aY2es70GYAqcx2lkLvVgCyldMr52Tqm4EJ58dNU2jUS3LC7ruohdonqJ1z6sj4TJpEfrpCk-JKxPyexyMDr4s67EzWBYlXUekLAVVtcHP9odjxTAjlG3kYizunvjdts00raeuK-MnIXN6SqI1V-MohYe4IB7vwhWe5XvLUkgJK2QLqaNK8GT54EvxxxE99oKa4mHncRwoTh4fRNm-9gp6DhbFmNgR532q-17LCnPl9mXr0VuQJ09FFCOhAyE9dDS2Q3BznySiJrF0CouQKMGr47fToD9xqbiB-AmUtbXqvl385irM_-cXqQWNtpYcNYI38-Xhpa9TklA6gzwUmYt5vY6lUe7VzDlRnSQIWE-WtN8eQwH_W_JcNQF1u26Vc-DmWqMZKX_BCKIoO_Fd0U_vxqrrElZY-GAmMD-USWDn748F_GpH9DdAO0MWAKaYostewHW8nr1_PoikmWoOXsDb_qiw_0QvmCT6Dt0gB0q2Qk9RgGIg4KDGTnRifxJv7guNDTEA..&pg=EI2DDKTZTNF27PNNUWZMCSCSBQ&ch=AQEAEAABABTUgVus0V7VZcKcY4xEfaQZdRgjOF3FgQA.",
+  "OptanonConsent": "isGpcEnabled=0&datestamp=Wed+Jul+15+2026+09:38:36+GMT+0700+(Giờ+Đông+Dương)&version=202604.2.0&browserGpcFlag=0&isDntEnabled=0&isIABGlobal=false&hosts=&consentId=b4ce0959-5cbf-428e-9a8a-bed8525afde2&interactionCount=1&isAnonUser=1&prevHadToken=0&landingPath=NotLandingPage&groups=C0001:1,C0002:1,C0003:1,C0004:1&crTime=1783151131882&AwaitingReconsent=false"
 }

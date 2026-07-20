@@ -23,15 +23,24 @@ export default function Home() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [pin, setPin] = useState(['', '', '', '', '', '']);
+  const [pendingAction, setPendingAction] = useState(null); // 'add' | 'edit' | 'import-single' | 'import-bulk' | 'export-bulk' | 'open-link'
+  const [pendingActionData, setPendingActionData] = useState(null);
 
   // Form states
   const [newCookieName, setNewCookieName] = useState('');
   const [newCookieRaw, setNewCookieRaw] = useState('');
+  const [editSelectedId, setEditSelectedId] = useState('');
   const [editCookieName, setEditCookieName] = useState('');
   const [editCookieRaw, setEditCookieRaw] = useState('');
 
+  const [checkCookieRaw, setCheckCookieRaw] = useState('');
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState([]);
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+
   const consoleEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const bulkFileInputRef = useRef(null);
   const isVerifyingRef = useRef(false);
 
   const [alertModal, setAlertModal] = useState({
@@ -372,15 +381,25 @@ export default function Home() {
     const formattedRaw = generateNetscapeCookieString(parsed);
 
     const updated = cookiesList.map((item) => {
-      if (item.id === selectedId) {
+      if (item.id === editSelectedId) {
         return { ...item, name, raw: formattedRaw, parsed };
       }
       return item;
     });
 
     saveCookiesList(updated);
+    setSelectedId(editSelectedId);
     addLog(`Updated cookie profile: ${name}`, "success");
     setIsEditModalOpen(false);
+  };
+
+  const handleSwitchEditProfile = (id) => {
+    const target = cookiesList.find(c => c.id === id);
+    if (target) {
+      setEditSelectedId(target.id);
+      setEditCookieName(target.name);
+      setEditCookieRaw(target.raw);
+    }
   };
 
   const handleDeleteCookie = async () => {
@@ -402,18 +421,98 @@ export default function Home() {
     }
   };
 
-  // Open PIN Modal first to verify permission
+  const handleExportAll = () => {
+    try {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cookiesList, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `netflix_cookies_export_${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      addLog("Đã xuất danh sách cookie thành công.", "success");
+    } catch (err) {
+      addLog(`Lỗi xuất file: ${err.message}`, "error");
+      showAlert(`Lỗi xuất file: ${err.message}`, "Lỗi");
+    }
+  };
+
+  const handleBulkImportUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const parsedData = JSON.parse(event.target.result);
+        if (!Array.isArray(parsedData)) {
+          throw new Error("Dữ liệu file không phải là danh sách (Array).");
+        }
+
+        let importCount = 0;
+        let duplicateCount = 0;
+        const updatedList = [...cookiesList];
+
+        for (const item of parsedData) {
+          if (!item.name || !item.raw || !item.parsed) continue;
+
+          const itemNetflixId = item.parsed?.NetflixId;
+          if (!itemNetflixId) continue;
+
+          const isDuplicate = updatedList.some(c => c.parsed?.NetflixId === itemNetflixId);
+          if (isDuplicate) {
+            duplicateCount++;
+            const index = updatedList.findIndex(c => c.parsed?.NetflixId === itemNetflixId);
+            updatedList[index] = {
+              ...item,
+              id: updatedList[index].id
+            };
+          } else {
+            updatedList.push({
+              ...item,
+              id: (Date.now() + importCount).toString()
+            });
+            importCount++;
+          }
+        }
+
+        if (importCount > 0 || duplicateCount > 0) {
+          const sorted = saveCookiesList(updatedList);
+          if (sorted.length > 0) {
+            setSelectedId(sorted[0].id);
+          }
+          addLog(`Nhập thành công ${importCount} cấu hình mới, cập nhật ${duplicateCount} cấu hình trùng lặp.`, "success");
+          await showAlert(`Nhập thành công ${importCount} cấu hình mới, cập nhật ${duplicateCount} cấu hình trùng lặp.`, "Thành công");
+        } else {
+          await showAlert("Không tìm thấy cấu hình cookie Netflix hợp lệ nào để nhập.", "Thông báo");
+        }
+
+      } catch (err) {
+        addLog(`Lỗi nhập file: ${err.message}`, "error");
+        await showAlert(`Không thể đọc file. Lỗi: ${err.message}`, "Lỗi nhập file");
+      }
+    };
+
+    reader.readAsText(file);
+    e.target.value = null;
+  };
+
+  const requestPin = (actionType, actionData = null) => {
+    setPendingAction(actionType);
+    setPendingActionData(actionData);
+    isVerifyingRef.current = false;
+    setPin(['', '', '', '', '', '']);
+    setIsPinModalOpen(true);
+    setTimeout(() => {
+      const firstInput = document.getElementById('pin-input-0');
+      if (firstInput) firstInput.focus();
+    }, 50);
+  };
+
   const openEditModal = () => {
     const current = cookiesList.find(c => c.id === selectedId);
     if (current) {
-      isVerifyingRef.current = false;
-      setPin(['', '', '', '', '', '']); // Reset PIN
-      setIsPinModalOpen(true);
-      // Auto focus first input field in next tick
-      setTimeout(() => {
-        const firstInput = document.getElementById('pin-input-0');
-        if (firstInput) firstInput.focus();
-      }, 50);
+      requestPin('edit');
     }
   };
 
@@ -427,21 +526,169 @@ export default function Home() {
 
     if (pinString === '100604') {
       setIsPinModalOpen(false);
-      const current = cookiesList.find(c => c.id === selectedId);
-      if (current) {
-        setEditCookieName(current.name);
-        setEditCookieRaw(current.raw);
-        setIsEditModalOpen(true);
-      }
       isVerifyingRef.current = false;
+
+      const action = pendingAction;
+      const data = pendingActionData;
+      setPendingAction(null);
+      setPendingActionData(null);
+
+      if (action === 'edit') {
+        const current = cookiesList.find(c => c.id === selectedId);
+        if (current) {
+          setEditSelectedId(current.id);
+          setEditCookieName(current.name);
+          setEditCookieRaw(current.raw);
+          setIsEditModalOpen(true);
+        }
+      } else if (action === 'add') {
+        setNewCookieName('');
+        setNewCookieRaw('');
+        setIsAddModalOpen(true);
+      } else if (action === 'import-single') {
+        fileInputRef.current?.click();
+      } else if (action === 'import-bulk') {
+        bulkFileInputRef.current?.click();
+      } else if (action === 'export-bulk') {
+        handleExportAll();
+      } else if (action === 'open-link') {
+        if (data) {
+          window.open(data, '_blank');
+        }
+      }
     } else {
-      await showAlert("Sai mã PIN! Bạn không có quyền chỉnh sửa tài khoản.", "Lỗi xác thực");
+      await showAlert("Sai mã PIN! Vui lòng thử lại.", "Lỗi xác thực");
       setPin(['', '', '', '', '', '']);
       isVerifyingRef.current = false;
       const firstInput = document.getElementById('pin-input-0');
       if (firstInput) firstInput.focus();
     }
   };
+
+  const handleCheckPastedCookie = async () => {
+    const raw = checkCookieRaw.trim();
+    if (!raw) {
+      await showAlert("Vui lòng dán cookie vào ô nhập để kiểm tra.", "Thiếu thông tin");
+      return;
+    }
+
+    const parsed = extractCookieDict(raw);
+    if (!parsed || !parsed.NetflixId) {
+      await showAlert("Không thể phân tích cookie hoặc cookie thiếu trường NetflixId.", "Lỗi phân tích");
+      return;
+    }
+
+    const netflixId = parsed.NetflixId;
+    const match = cookiesList.find(c => c.parsed && c.parsed.NetflixId === netflixId);
+
+    if (match) {
+      await showAlert(`Phát hiện TRÙNG LẶP! Cookie dán vào trùng với cấu hình: "${match.name}".`, "Kết quả kiểm tra");
+      addLog(`Kiểm tra cookie dán: Trùng với cấu hình "${match.name}"`, "warning");
+    } else {
+      await showAlert("Tuyệt vời! Cookie dán vào KHÔNG trùng với bất kỳ cấu hình nào đã lưu.", "Kết quả kiểm tra");
+      addLog("Kiểm tra cookie dán: Không trùng cấu hình nào", "success");
+    }
+  };
+
+  const handleCheckAllSavedCookies = async () => {
+    if (cookiesList.length === 0) {
+      await showAlert("Không có cấu hình cookie nào để kiểm tra.", "Thông báo");
+      return;
+    }
+
+    const idGroups = {};
+    let hasDuplicate = false;
+
+    for (const profile of cookiesList) {
+      const netflixId = profile.parsed?.NetflixId;
+      if (!netflixId) continue;
+      if (!idGroups[netflixId]) {
+        idGroups[netflixId] = [];
+      }
+      idGroups[netflixId].push(profile.name);
+    }
+
+    const dupDetails = [];
+    for (const [netflixId, names] of Object.entries(idGroups)) {
+      if (names.length > 1) {
+        hasDuplicate = true;
+        dupDetails.push(`- Trùng cookie NetflixId (${netflixId.substring(0, 15)}...): ${names.join(', ')}`);
+      }
+    }
+
+    if (hasDuplicate) {
+      const message = `Phát hiện các cấu hình bị trùng lặp cookie sau:\n\n${dupDetails.join('\n')}`;
+      await showAlert(message, "Phát hiện trùng lặp");
+      addLog("Kiểm tra tất cả cookie: Phát hiện trùng lặp!", "warning");
+    } else {
+      await showAlert("Tất cả các cấu hình cookie đã lưu đều duy nhất (Không có trùng lặp).", "Kết quả kiểm tra");
+      addLog("Kiểm tra tất cả cookie: Không có trùng lặp", "success");
+    }
+  };
+
+  const handleBulkGenerateAndCheck = async () => {
+    if (cookiesList.length === 0) {
+      await showAlert("Không có cấu hình cookie nào để kiểm tra hàng loạt.", "Thông báo");
+      return;
+    }
+
+    const initialProgress = cookiesList.map(profile => ({
+      id: profile.id,
+      name: profile.name,
+      netflixId: profile.parsed?.NetflixId || '',
+      status: 'pending',
+      link: '',
+      error: ''
+    }));
+
+    setBulkProgress(initialProgress);
+    setIsBulkModalOpen(true);
+    setIsBulkGenerating(true);
+    addLog(`Bắt đầu tạo & kiểm tra link hàng loạt cho ${cookiesList.length} tài khoản...`, "info");
+
+    for (let i = 0; i < initialProgress.length; i++) {
+      const item = initialProgress[i];
+      setBulkProgress(prev => prev.map(p => p.id === item.id ? { ...p, status: 'checking' } : p));
+
+      try {
+        if (!item.netflixId) {
+          throw new Error("Không có NetflixId cookie");
+        }
+
+        const response = await fetch('/api/generate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ netflixId: item.netflixId }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || `Lỗi status ${response.status}`);
+        }
+
+        const { token } = data;
+        if (!token) {
+          throw new Error("Không trả về token");
+        }
+
+        const loginUrl = `https://netflix.com/?nftoken=${token}`;
+        setBulkProgress(prev => prev.map(p => p.id === item.id ? { ...p, status: 'live', link: loginUrl } : p));
+        addLog(`Tài khoản "${item.name}": SỐNG (Token generated)`, "success");
+      } catch (err) {
+        setBulkProgress(prev => prev.map(p => p.id === item.id ? { ...p, status: 'dead', error: err.message } : p));
+        addLog(`Tài khoản "${item.name}": CHẾT (${err.message})`, "error");
+      }
+
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    setIsBulkGenerating(false);
+    addLog("Đã hoàn thành kiểm tra hàng loạt.", "info");
+  };
+
+
 
   const handlePinChange = (value, index) => {
     // Keep only numeric characters
@@ -633,80 +880,158 @@ export default function Home() {
       </header>
 
       <main className="main-grid">
-        {/* Left Column: Cookie Management */}
-        <section className="card" id="cookie-manager-section">
-          <h2 className="card-title">Cookie Profile Manager</h2>
-          
-          <div className="form-group">
-            <label htmlFor="cookie-select">Select Cookie Profile:</label>
-            <select
-              id="cookie-select"
-              value={selectedId}
-              onChange={(e) => setSelectedId(e.target.value)}
-              disabled={cookiesList.length === 0}
-            >
-              {cookiesList.length > 0 ? (
-                cookiesList.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))
-              ) : (
-                <option>No saved cookie profiles</option>
-              )}
-            </select>
-          </div>
+        {/* Left Column: Cookie Management & Tools */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          <section className="card" id="cookie-manager-section">
+            <h2 className="card-title">Cookie Profile Manager</h2>
+            
+            <div className="form-group">
+              <label htmlFor="cookie-select">Select Cookie Profile:</label>
+              <select
+                id="cookie-select"
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+                disabled={cookiesList.length === 0}
+              >
+                {cookiesList.length > 0 ? (
+                  cookiesList.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))
+                ) : (
+                  <option>No saved cookie profiles</option>
+                )}
+              </select>
+            </div>
 
-          <div className="input-row">
-            <button 
-              className="btn btn-primary" 
-              onClick={() => setIsAddModalOpen(true)}
-              title="Add New Cookie Manually"
-            >
-              + Add Cookie
-            </button>
-            <button 
-              className="btn btn-secondary" 
-              onClick={() => fileInputRef.current?.click()}
-              title="Browse text/JSON file"
-            >
-              Import File
-            </button>
-            <button 
-              className="btn btn-secondary" 
-              onClick={openEditModal}
-              disabled={!currentProfile}
-              title="Edit Raw Contents of Selected Profile"
-            >
-              Edit File
-            </button>
-            <button 
-              className="btn btn-secondary" 
-              onClick={handleDeleteCookie}
-              disabled={!currentProfile}
-              style={{ borderColor: '#552222', color: '#ff8888' }}
-              title="Delete Selected Profile"
-            >
-              Delete
-            </button>
+            <div className="input-row" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => {
+                  setNewCookieName('');
+                  setNewCookieRaw('');
+                  setIsAddModalOpen(true);
+                }}
+                title="Add New Cookie Manually"
+                style={{ flex: '1 1 auto' }}
+              >
+                + Add Cookie
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => fileInputRef.current?.click()}
+                title="Browse text/JSON file"
+                style={{ flex: '1 1 auto' }}
+              >
+                Import File
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={openEditModal}
+                disabled={!currentProfile}
+                title="Edit Raw Contents of Selected Profile"
+                style={{ flex: '1 1 auto' }}
+              >
+                Edit File
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={handleDeleteCookie}
+                disabled={!currentProfile}
+                style={{ borderColor: '#552222', color: '#ff8888', flex: '1 1 auto' }}
+                title="Delete Selected Profile"
+              >
+                Delete
+              </button>
 
-            {/* Hidden File Input for Importing */}
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              style={{ display: 'none' }} 
-              accept=".txt,.json"
-              onChange={handleFileUpload} 
-            />
-          </div>
+              {/* Hidden File Input for Importing */}
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                style={{ display: 'none' }} 
+                accept=".txt,.json"
+                onChange={handleFileUpload} 
+              />
+            </div>
 
-          <button 
-            className="btn btn-primary btn-large" 
-            onClick={handleGenerate}
-            disabled={!currentProfile || isGenerating}
-            style={{ marginTop: '0.5rem' }}
-          >
-            {isGenerating ? "Generating..." : "Generate NFToken Link"}
-          </button>
-        </section>
+            <div className="input-row" style={{ gap: '0.5rem', marginTop: '0.25rem' }}>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => bulkFileInputRef.current?.click()}
+                title="Nhập danh sách cấu hình từ file backup JSON"
+                style={{ flex: 1 }}
+              >
+                Import Backup (Bulk)
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => requestPin('export-bulk')}
+                title="Xuất toàn bộ danh sách cấu hình ra file JSON"
+                style={{ flex: 1 }}
+              >
+                Export Backup (Bulk)
+              </button>
+
+              {/* Hidden File Input for Bulk Importing */}
+              <input 
+                type="file" 
+                ref={bulkFileInputRef} 
+                style={{ display: 'none' }} 
+                accept=".json"
+                onChange={handleBulkImportUpload} 
+              />
+            </div>
+
+            <button 
+              className="btn btn-primary btn-large" 
+              onClick={handleGenerate}
+              disabled={!currentProfile || isGenerating}
+              style={{ marginTop: '0.5rem' }}
+            >
+              {isGenerating ? "Generating..." : "Generate NFToken Link"}
+            </button>
+          </section>
+
+          {/* Cookie Tools & Duplicate Checker Card */}
+          <section className="card" id="cookie-tools-section">
+            <h2 className="card-title">Cookie Tools & Checker</h2>
+            
+            <div className="form-group">
+              <label htmlFor="check-cookie-input">Dán cookie để kiểm tra trùng:</label>
+              <textarea
+                id="check-cookie-input"
+                rows={4}
+                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}
+                placeholder="Dán nội dung cookie Netflix cần kiểm tra trùng lặp vào đây..."
+                value={checkCookieRaw}
+                onChange={(e) => setCheckCookieRaw(e.target.value)}
+              />
+              <button 
+                className="btn btn-secondary"
+                onClick={handleCheckPastedCookie}
+                style={{ marginTop: '0.25rem' }}
+              >
+                Kiểm tra cookie dán
+              </button>
+            </div>
+
+            <div className="input-row" style={{ gap: '0.5rem', marginTop: '0.5rem' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={handleCheckAllSavedCookies}
+                style={{ flex: 1 }}
+              >
+                Kiểm tra tất cả cookie
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleBulkGenerateAndCheck}
+                style={{ flex: 1 }}
+              >
+                Tạo & Kiểm tra hàng loạt
+              </button>
+            </div>
+          </section>
+        </div>
 
         {/* Right Column: Output & Logs */}
         <section className="card" id="output-generator-section" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -736,6 +1061,13 @@ export default function Home() {
                 style={isCopying ? { backgroundColor: 'var(--success)', border: 'none', color: '#000000' } : {}}
               >
                 {isCopying ? "Copied!" : "Copy"}
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => requestPin('open-link', tokenLink)}
+                disabled={!tokenLink}
+              >
+                Mở nhanh
               </button>
             </div>
           </div>
@@ -814,6 +1146,18 @@ export default function Home() {
               <button className="modal-close" onClick={() => setIsEditModalOpen(false)}>&times;</button>
             </div>
             <div className="modal-body">
+              <div className="form-group">
+                <label htmlFor="edit-cookie-select">Chọn cấu hình để sửa:</label>
+                <select
+                  id="edit-cookie-select"
+                  value={editSelectedId}
+                  onChange={(e) => handleSwitchEditProfile(e.target.value)}
+                >
+                  {cookiesList.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
               <div className="form-group">
                 <label htmlFor="edit-cookie-name">Profile Name:</label>
                 <input 
@@ -930,6 +1274,97 @@ export default function Home() {
                 style={{ minWidth: '80px' }}
               >
                 {alertModal.type === 'confirm' ? 'Đồng ý' : 'OK'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Generate & Check Modal */}
+      {isBulkModalOpen && (
+        <div className="modal-overlay" style={{ zIndex: 1500 }}>
+          <div className="modal-content" style={{ maxWidth: '800px', width: '95%' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Tạo & Kiểm Tra Link Hàng Loạt</h3>
+              <button className="modal-close" onClick={() => setIsBulkModalOpen(false)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ color: 'var(--text-sub)', fontSize: '0.9rem' }}>
+                Hệ thống đang tiến hành tạo token link và kiểm tra trạng thái hoạt động của các cookie Netflix đã lưu.
+              </p>
+              
+              <div className="bulk-table-container" style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid var(--card-border)', borderRadius: '8px' }}>
+                <table className="bulk-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderBottom: '1px solid var(--card-border)' }}>
+                      <th style={{ padding: '0.75rem 1rem' }}>Tên cấu hình</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>Trạng thái</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulkProgress.map((item) => (
+                      <tr key={item.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '0.75rem 1rem', fontWeight: '500' }}>{item.name}</td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          {item.status === 'pending' && <span style={{ color: 'var(--text-muted)' }}>Chờ...</span>}
+                          {item.status === 'checking' && <span style={{ color: 'var(--accent)', animation: 'pulse 1s infinite' }}>Đang kiểm tra...</span>}
+                          {item.status === 'live' && <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>✓ SỐNG (Live)</span>}
+                          {item.status === 'dead' && (
+                            <span style={{ color: 'var(--error)' }} title={item.error}>
+                              ✗ CHẾT (Dead)
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          {item.status === 'live' && (
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <button 
+                                className="btn btn-secondary" 
+                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', minHeight: 'auto' }}
+                                onClick={() => {
+                                  navigator.clipboard.writeText(item.link);
+                                  addLog(`Đã copy link tài khoản "${item.name}"`, "success");
+                                }}
+                              >
+                                Copy
+                              </button>
+                              <button 
+                                className="btn btn-primary" 
+                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', minHeight: 'auto' }}
+                                onClick={() => requestPin('open-link', item.link)}
+                              >
+                                Mở nhanh
+                              </button>
+                            </div>
+                          )}
+                          {item.status === 'dead' && (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{item.error || 'Thử lại sau'}</span>
+                          )}
+                          {(item.status === 'pending' || item.status === 'checking') && (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setIsBulkModalOpen(false)}
+                disabled={isBulkGenerating}
+              >
+                Đóng
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={handleBulkGenerateAndCheck}
+                disabled={isBulkGenerating}
+              >
+                {isBulkGenerating ? 'Đang chạy...' : 'Kiểm tra lại'}
               </button>
             </div>
           </div>
