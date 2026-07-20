@@ -1064,7 +1064,7 @@ export default function Home() {
               </button>
               <button 
                 className="btn btn-primary" 
-                onClick={() => requestPin('open-link', tokenLink)}
+                onClick={() => window.open(tokenLink, '_blank')}
                 disabled={!tokenLink}
               >
                 Mở nhanh
@@ -1332,7 +1332,7 @@ export default function Home() {
                               <button 
                                 className="btn btn-primary" 
                                 style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', minHeight: 'auto' }}
-                                onClick={() => requestPin('open-link', item.link)}
+                                onClick={() => window.open(item.link, '_blank')}
                               >
                                 Mở nhanh
                               </button>
