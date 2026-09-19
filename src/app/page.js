@@ -13,10 +13,12 @@ export default function Home() {
   const [cookiesList, setCookiesList] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [tokenLink, setTokenLink] = useState('');
+  const [mobileTokenLink, setMobileTokenLink] = useState('');
   const [expiryTime, setExpiryTime] = useState('');
   const [logs, setLogs] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
+  const [isCopyingMobile, setIsCopyingMobile] = useState(false);
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -746,7 +748,7 @@ export default function Home() {
           throw new Error("Không trả về token");
         }
 
-        const loginUrl = `https://netflix.com/?nftoken=${token}`;
+        const loginUrl = `https://www.netflix.com/?nftoken=${token}`;
         setBulkProgress(prev => prev.map(p => p.id === item.id ? { ...p, status: 'live', link: loginUrl } : p));
         addLog(`Tài khoản "${item.name}": SỐNG (Token generated)`, "success");
       } catch (err) {
@@ -918,6 +920,7 @@ export default function Home() {
     
     setIsGenerating(true);
     setTokenLink('');
+    setMobileTokenLink('');
     setExpiryTime('');
 
     try {
@@ -936,9 +939,11 @@ export default function Home() {
       }
 
       const { token, expires } = data;
-      const loginUrl = `https://netflix.com/?nftoken=${token}`;
+      const loginUrl = `https://www.netflix.com/?nftoken=${token}`;
+      const mobileLoginUrl = `nflx://www.netflix.com/browse?nftoken=${token}`;
       
       setTokenLink(loginUrl);
+      setMobileTokenLink(mobileLoginUrl);
       setExpiryTime(expires);
 
       addLog("Success! NFToken link generated successfully.", "success");
@@ -955,10 +960,21 @@ export default function Home() {
     if (!tokenLink) return;
     navigator.clipboard.writeText(tokenLink).then(() => {
       setIsCopying(true);
-      addLog("Copied login link to clipboard!", "success");
+      addLog("Copied PC login link to clipboard!", "success");
       setTimeout(() => setIsCopying(false), 2000);
     }).catch(err => {
-      addLog(`Failed to copy link: ${err}`, "error");
+      addLog(`Failed to copy PC link: ${err}`, "error");
+    });
+  };
+
+  const handleCopyMobile = () => {
+    if (!mobileTokenLink) return;
+    navigator.clipboard.writeText(mobileTokenLink).then(() => {
+      setIsCopyingMobile(true);
+      addLog("Copied Mobile login link to clipboard!", "success");
+      setTimeout(() => setIsCopyingMobile(false), 2000);
+    }).catch(err => {
+      addLog(`Failed to copy Mobile link: ${err}`, "error");
     });
   };
 
@@ -1137,7 +1153,7 @@ export default function Home() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="token-output">Generated NFToken Login Link:</label>
+            <label htmlFor="token-output">Generated NFToken Login Link (PC):</label>
             <div className="input-row">
               <input 
                 id="token-output"
@@ -1152,14 +1168,46 @@ export default function Home() {
                 disabled={!tokenLink}
                 style={isCopying ? { backgroundColor: 'var(--success)', border: 'none', color: '#000000' } : {}}
               >
-                {isCopying ? "Copied!" : "Copy"}
+                {isCopying ? "Copied!" : "Copy PC"}
               </button>
               <button 
                 className="btn btn-primary" 
                 onClick={() => window.open(tokenLink, '_blank')}
                 disabled={!tokenLink}
               >
-                Mở nhanh
+                Login PC
+              </button>
+            </div>
+          </div>
+
+          <div className="form-group" style={{ marginTop: '0.5rem' }}>
+            <label htmlFor="mobile-token-output">Generated NFToken Login Link (Mobile):</label>
+            <p style={{ color: 'var(--warning)', fontSize: '0.8rem', marginTop: '0.2rem', marginBottom: '0.5rem' }}>
+              ⚠️ LƯU Ý: Không bấm mở link trực tiếp trong Zalo/Messenger. Hãy copy link và dán vào trình duyệt Safari hoặc Chrome để tránh lỗi.
+            </p>
+            <div className="input-row">
+              <input 
+                id="mobile-token-output"
+                type="text" 
+                value={mobileTokenLink} 
+                readOnly 
+                placeholder="https://netflix.com/browse?nftoken=..."
+              />
+              <button 
+                className="btn btn-secondary" 
+                onClick={handleCopyMobile}
+                disabled={!mobileTokenLink}
+                style={isCopyingMobile ? { backgroundColor: 'var(--success)', border: 'none', color: '#000000' } : {}}
+              >
+                {isCopyingMobile ? "Copied!" : "Copy Mobile"}
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => window.open(mobileTokenLink, '_blank')}
+                disabled={!mobileTokenLink}
+                style={{ backgroundColor: '#e50914' }}
+              >
+                Login Mobile
               </button>
             </div>
           </div>
@@ -1410,23 +1458,44 @@ export default function Home() {
                         </td>
                         <td style={{ padding: '0.75rem 1rem' }}>
                           {item.status === 'live' && (
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                               <button 
                                 className="btn btn-secondary" 
-                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', minHeight: 'auto' }}
+                                style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem', minHeight: 'auto' }}
                                 onClick={() => {
                                   navigator.clipboard.writeText(item.link);
-                                  addLog(`Đã copy link tài khoản "${item.name}"`, "success");
+                                  addLog(`Đã copy link PC "${item.name}"`, "success");
                                 }}
                               >
-                                Copy
+                                Copy PC
                               </button>
                               <button 
                                 className="btn btn-primary" 
-                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', minHeight: 'auto' }}
+                                style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem', minHeight: 'auto' }}
                                 onClick={() => window.open(item.link, '_blank')}
                               >
-                                Mở nhanh
+                                Login PC
+                              </button>
+                              <button 
+                                className="btn btn-secondary" 
+                                style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem', minHeight: 'auto' }}
+                                onClick={() => {
+                                  const mobileLink = item.link.replace('/?', '/browse?');
+                                  navigator.clipboard.writeText(mobileLink);
+                                  addLog(`Đã copy link Mobile "${item.name}"`, "success");
+                                }}
+                              >
+                                Copy Mobile
+                              </button>
+                              <button 
+                                className="btn btn-primary" 
+                                style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem', minHeight: 'auto', backgroundColor: '#e50914' }}
+                                onClick={() => {
+                                  const mobileLink = item.link.replace('/?', '/browse?');
+                                  window.open(mobileLink, '_blank');
+                                }}
+                              >
+                                Login Mobile
                               </button>
                             </div>
                           )}
