@@ -748,7 +748,7 @@ export default function Home() {
           throw new Error("Không trả về token");
         }
 
-        const loginUrl = `https://www.netflix.com/?nftoken=${token}`;
+        const loginUrl = `https://netflix.com/?nftoken=${token}`;
         setBulkProgress(prev => prev.map(p => p.id === item.id ? { ...p, status: 'live', link: loginUrl } : p));
         addLog(`Tài khoản "${item.name}": SỐNG (Token generated)`, "success");
       } catch (err) {
@@ -939,8 +939,8 @@ export default function Home() {
       }
 
       const { token, expires } = data;
-      const loginUrl = `https://www.netflix.com/?nftoken=${token}`;
-      const mobileLoginUrl = `nflx://www.netflix.com/browse?nftoken=${token}`;
+      const loginUrl = `https://netflix.com/?nftoken=${token}`;
+      const mobileLoginUrl = `https://netflix.com/browse?nftoken=${token}`;
       
       setTokenLink(loginUrl);
       setMobileTokenLink(mobileLoginUrl);
