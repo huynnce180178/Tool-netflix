@@ -440,3 +440,48 @@ footer a:hover {
   50% { opacity: 0.4; }
   100% { opacity: 1; }
 }
+
+/* Mobile Responsive Improvements */
+@media (max-width: 600px) {
+  .app-container {
+    padding: 1rem 0.75rem;
+    gap: 1.5rem;
+  }
+  
+  header h1 {
+    font-size: 1.8rem;
+  }
+  
+  .input-row {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .input-row .btn {
+    width: 100%;
+    margin-top: 0.2rem;
+  }
+  
+  .modal-content {
+    width: 95%;
+    padding: 1.2rem;
+  }
+  
+  .pin-input {
+    width: 40px;
+    height: 45px;
+    font-size: 1.3rem;
+  }
+  
+  .card {
+    padding: 1.2rem;
+  }
+  
+  .card-title {
+    font-size: 1rem;
+  }
+  
+  .btn {
+    padding: 0.7rem 1rem;
+  }
+}

@@ -1170,13 +1170,15 @@ export default function Home() {
               >
                 {isCopying ? "Copied!" : "Copy PC"}
               </button>
-              <button 
-                className="btn btn-primary" 
-                onClick={() => window.open(tokenLink, '_blank')}
-                disabled={!tokenLink}
+              <a 
+                className={`btn btn-primary ${!tokenLink ? 'disabled' : ''}`}
+                href={tokenLink || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ pointerEvents: !tokenLink ? 'none' : 'auto' }}
               >
                 Login PC
-              </button>
+              </a>
             </div>
           </div>
 
@@ -1201,14 +1203,16 @@ export default function Home() {
               >
                 {isCopyingMobile ? "Copied!" : "Copy Mobile"}
               </button>
-              <button 
-                className="btn btn-primary" 
-                onClick={() => window.open(mobileTokenLink, '_blank')}
-                disabled={!mobileTokenLink}
-                style={{ backgroundColor: '#e50914' }}
+              <a 
+                className={`btn btn-primary ${!mobileTokenLink ? 'disabled' : ''}`}
+                href={mobileTokenLink || '#'}
+                style={{ 
+                  backgroundColor: '#e50914',
+                  pointerEvents: !mobileTokenLink ? 'none' : 'auto'
+                }}
               >
                 Login Mobile
-              </button>
+              </a>
             </div>
           </div>
 
